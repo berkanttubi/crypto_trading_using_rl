@@ -3,19 +3,36 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from mplfinance.original_flavor import candlestick_ohlc
 import requests
-import ta
-from reportlab.pdfgen import canvas
 from datetime import datetime, timedelta
 import time
-def get_data(symbol, interval):
+
+def get_start_time_from_period(period):
+    now = datetime.now()
+
+    period_to_days = {
+        "1M": 30,
+        "3M": 90,
+        "6M": 180,
+        "1Y": 365,
+        "2Y": 730
+    }
+
+    days = period_to_days.get(period, 365)  # default to 1y if not matched
+    start_time = int((now - timedelta(days=days)).timestamp() * 1000)  # in ms
+    return start_time
+
+def get_data(symbol, interval,period = None):
     # Fetch historical BTC/USD data from Binance API
     
     url = 'https://api.binance.com/api/v3/klines'
     limit = 1000  # Max per request
     end_time = int(datetime.now().timestamp() * 1000)  # Current time in ms
-    start_time = int((datetime.now() - timedelta(days=730)).timestamp() * 1000)  # 2 years ago
+    if period is None:
+        start_time = int((datetime.now() - timedelta(days=730)).timestamp() * 1000)  # 2 years ago
+    else:
+        start_time = get_start_time_from_period(period)
+
 
     all_data = []
 
