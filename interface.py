@@ -5,6 +5,11 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from get_data import get_data
 from train import create_environment, preprocess_data, create_agent, train
+import time
+import torch
+import numpy as np
+import random
+from finrl.plot import backtest_stats, backtest_plot, get_baseline
 
 class StockApp:
     def __init__(self, root):
@@ -16,6 +21,10 @@ class StockApp:
         self.agent = None
         self.trade_history = None
         self.total_timesteps = 0
+        seed = 42
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.manual_seed(seed)
         self.root = root
         self.root.title("BerkantFinRL")
 
@@ -58,6 +67,13 @@ class StockApp:
 
         self.train_button = tk.Button(self.train_frame, text="Train Model", command=self.train)
         self.train_button.pack(pady=5, fill=tk.X)
+        # Simülasyon Bölümü
+        self.sim_frame = tk.LabelFrame(self.left_frame, text="Simülasyon", padx=10, pady=10, bd=2, relief=tk.GROOVE, font=('Arial', 10, 'bold'))
+        self.sim_frame.pack(pady=10, fill=tk.X)
+
+        self.simulate_button = tk.Button(self.sim_frame, text="Backtesting", command=self.run_backtest)
+        self.simulate_button.pack(pady=5, fill=tk.X)
+
 
         # Grafik Paneli
         self.right_frame = tk.Frame(root, padx=10, pady=10)
@@ -67,6 +83,12 @@ class StockApp:
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.right_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
+        # Performans Sonuçları Paneli
+        self.stats_frame = tk.LabelFrame(self.right_frame, text="Performans İstatistikleri", padx=10, pady=10)
+        self.stats_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+
+        self.stats_text = tk.Text(self.stats_frame, height=10, width=80, wrap=tk.WORD)
+        self.stats_text.pack()
     def train(self):
         self.trade_history = train(self.model, self.total_timesteps, self.agent, self.train_environment_gym)
         self.plot_trade_history()
@@ -173,6 +195,49 @@ class StockApp:
                 env_kwargs[key] = int(value)
 
         self.train_environment, self.train_environment_gym = create_environment(env_kwargs, self.train_data)
+
+
+    def run_simulation(self):
+        if self.model is None or self.test_data is None:
+            print("Lütfen önce modeli eğitin ve test verisini yükleyin.")
+            return
+
+        self.ax_trade.clear()
+
+        # Yeni environment ile test başlat
+        self.train_environment_gym.df = self.test_data
+        test_env, _ = self.train_environment_gym.get_sb_env()
+        obs = test_env.reset()
+
+        done = False
+        while not done:
+            action, _ = self.model.predict(obs)
+            obs, reward, done, info = test_env.step(action)
+            self.root.update()
+            time.sleep(0.05)
+
+        # Simülasyon bittiğinde çizimi yap
+        memory = self.train_environment_gym.save_asset_memory()
+        account_values = memory['account_value'].tolist()
+        timestamps = memory['date'].tolist()
+
+        self.ax_trade.clear()
+        self.ax_trade.plot(timestamps, account_values, label="Portföy Değeri (Simülasyon)", color='orange')
+        self.ax_trade.set_xlabel("Zaman")
+        self.ax_trade.set_ylabel("USD")
+        self.ax_trade.set_title("Simülasyon Portföy Değeri")
+        self.ax_trade.tick_params(axis='x', labelrotation=45)
+        self.ax_trade.legend()
+        self.canvas.draw()
+
+        print("Simülasyon tamamlandı.")
+
+    def run_backtest(self):
+        perf_stats = backtest_stats(self.trade_history)
+            # Arayüze yaz
+        self.stats_text.delete('1.0', tk.END)  # Önce temizle
+        for key, value in perf_stats.items():
+            self.stats_text.insert(tk.END, f"{key}: {value}\n")
 
 if __name__ == "__main__":
     root = tk.Tk()
